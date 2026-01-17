@@ -9,7 +9,7 @@
 
 **Size:** 10,5Mb
 
-**Source:** [PDF](https://aprom.by/catalog/catalog-koyo.pdf)
+**Source:** [PDF]()
 
 ---
 
@@ -17001,7 +17001,7 @@ B2001RUS
 
 **Size:** 6Mb
 
-**Source:** [PDF](https://aprom.by/catalog/catalog-ina.pdf)
+**Source:** [PDF]()
 
 ---
 

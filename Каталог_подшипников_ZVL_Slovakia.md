@@ -4,7 +4,7 @@
 
 **Size:** 10Mb
 
-**Source:** [PDF](https://aprom.by/catalog/catalog-zvl.pdf)
+**Source:** [PDF]()
 
 ---
 
