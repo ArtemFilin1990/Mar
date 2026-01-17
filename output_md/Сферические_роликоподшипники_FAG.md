@@ -126,7 +126,7 @@ www.schaefflerrussland.ru
 info@schaeffler.spb.ru
 www.schaefflerrussland.ru
 Представительство Schaeffler KG в Минске 
-(Республика Беларусь)
+()
 Телефон: +375 (17) 256-30-02
 Факс:
 +375 (17) 256-30-04

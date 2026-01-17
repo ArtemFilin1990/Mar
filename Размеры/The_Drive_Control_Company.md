@@ -12686,7 +12686,7 @@ kherson@boschrexroth.com.ua
 факс: 	
 +380 (6264) 79 178
 kramatorsk@boschrexroth.com.ua
-Беларусь:
+:
 Бош Рэксрот
 вул. Янкi Купалы 25, пак. 201/1
 220030 Мiнск
