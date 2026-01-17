@@ -23,7 +23,6 @@ Page 3
 
 959e917f676bc3d8fd3d6392837abdb
 APP-GROUP
-APROM
 ARB
 ART
 Page 4
