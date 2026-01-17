@@ -115,7 +115,7 @@ All archives will be processed automatically.
 
 ```bash
 # Переходим в корень репозитория
-cd /path/to/Mar
+cd /path/to/repository
 
 # Запускаем скрипт распаковки
 ./extract_archives.sh
@@ -244,5 +244,5 @@ If you have suggestions for improving the automatic extraction system, create an
 
 ---
 
-**Последнее обновление / Last updated:** 2025  
-**Версия / Version:** 1.0
+**Последнее обновление / Last updated:** Январь 2025 / January 2025  
+**Версия / Version:** 1.0.0

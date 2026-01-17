@@ -46,12 +46,19 @@ jobs:
           failed=0
           
           # Получаем список измененных файлов из последнего коммита
-          changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD || echo "")
+          # Обработка случая с первым коммитом
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD~1..HEAD || echo "")
+          else
+            # Первый коммит - получаем все файлы
+            changed_files=$(git ls-tree -r HEAD --name-only || echo "")
+          fi
           
           # Если нет измененных файлов, проверяем все архивы в репозитории
           if [ -z "$changed_files" ]; then
             echo "Не найдено измененных файлов в последнем коммите, поиск всех архивов..."
-            changed_files=$(find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.tgz" -o -name "*.tar" \) -printf "%f\n")
+            # Используем портабельную версию find без -printf
+            changed_files=$(find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.tgz" -o -name "*.tar" \) -exec basename {} \;)
           fi
           
           # Создаем временный файл для списка извлеченных архивов
@@ -72,17 +79,31 @@ jobs:
                 total=$((total + 1))
                 echo -e "${YELLOW}Обработка / Processing: $file${NC}"
                 
-                if unzip -t "$file" > /dev/null 2>&1; then
-                  if unzip -o "$file" -d .; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
-                    echo "- $file" >> "$extracted_list"
-                    success=$((success + 1))
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
+                # Проверка целостности архива
+                if ! unzip -t "$file" > /dev/null 2>&1; then
                   echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера архива (максимум 500MB для безопасности)
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Распаковка с ограничениями
+                if unzip -o "$file" -d . 2>&1 | grep -v "inflating:" | grep -v "creating:"; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
                   failed=$((failed + 1))
                 fi
                 echo ""
@@ -91,17 +112,30 @@ jobs:
                 total=$((total + 1))
                 echo -e "${YELLOW}Обработка / Processing: $file${NC}"
                 
-                if tar -tzf "$file" > /dev/null 2>&1; then
-                  if tar -xzf "$file" -C .; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
-                    echo "- $file" >> "$extracted_list"
-                    success=$((success + 1))
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
+                # Проверка целостности архива
+                if ! tar -tzf "$file" > /dev/null 2>&1; then
                   echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                if tar -xzf "$file" -C .; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
                   failed=$((failed + 1))
                 fi
                 echo ""
@@ -110,17 +144,30 @@ jobs:
                 total=$((total + 1))
                 echo -e "${YELLOW}Обработка / Processing: $file${NC}"
                 
-                if tar -tf "$file" > /dev/null 2>&1; then
-                  if tar -xf "$file" -C .; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
-                    echo "- $file" >> "$extracted_list"
-                    success=$((success + 1))
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
+                # Проверка целостности архива
+                if ! tar -tf "$file" > /dev/null 2>&1; then
                   echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                if tar -xf "$file" -C .; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
                   failed=$((failed + 1))
                 fi
                 echo ""
@@ -153,8 +200,13 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          # Добавляем все новые файлы
+          # Получаем список всех файлов, исключая архивы и системные файлы
+          # Add all files except git directory and temp files
           git add -A
+          
+          # Исключаем временные и системные файлы из коммита
+          git reset -- .git* 2>/dev/null || true
+          git reset -- /tmp/* 2>/dev/null || true
           
           # Проверяем, есть ли что коммитить
           if git diff --staged --quiet; then
@@ -167,9 +219,7 @@ jobs:
                        -m "" \
                        -m "Автоматически распакованы следующие архивы:" \
                        -m "The following archives were automatically extracted:" \
-                       -m "$extracted_info" \
-                       -m "" \
-                       -m "Создано GitHub Actions workflow: auto-extract-archives"
+                       -m "$extracted_info"
             
             # Пушим изменения
             git push
