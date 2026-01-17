@@ -1,0 +1,226 @@
+name: Auto Extract Archives
+# Автоматическая распаковка архивов при загрузке
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.zip'
+      - '**.tar.gz'
+      - '**.tgz'
+      - '**.tar'
+
+jobs:
+  extract-archives:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Detect and extract new archives
+        run: |
+          #!/bin/bash
+          
+          # Цвета для вывода
+          GREEN='\033[0;32m'
+          RED='\033[0;31m'
+          YELLOW='\033[1;33m'
+          NC='\033[0m' # No Color
+          
+          echo "=================================================="
+          echo "Автоматическая распаковка архивов"
+          echo "Automatic archive extraction"
+          echo "=================================================="
+          echo ""
+          
+          # Счетчики
+          total=0
+          success=0
+          failed=0
+          
+          # Получаем список измененных файлов из последнего коммита
+          # Обработка случая с первым коммитом
+          if git rev-parse HEAD~1 >/dev/null 2>&1; then
+            changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD~1..HEAD || echo "")
+          else
+            # Первый коммит - получаем все файлы
+            changed_files=$(git ls-tree -r HEAD --name-only || echo "")
+          fi
+          
+          # Если нет измененных файлов, проверяем все архивы в репозитории
+          if [ -z "$changed_files" ]; then
+            echo "Не найдено измененных файлов в последнем коммите, поиск всех архивов..."
+            # Используем портабельную версию find без -printf
+            changed_files=$(find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.tgz" -o -name "*.tar" \) -exec basename {} \;)
+          fi
+          
+          # Создаем временный файл для списка извлеченных архивов
+          extracted_list=$(mktemp)
+          
+          # Обрабатываем только новые/измененные архивы
+          while IFS= read -r file; do
+            if [ -z "$file" ]; then
+              continue
+            fi
+            
+            if [ ! -f "$file" ]; then
+              continue
+            fi
+            
+            case "$file" in
+              *.zip)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                # Проверка целостности архива
+                if ! unzip -t "$file" > /dev/null 2>&1; then
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера архива (максимум 500MB для безопасности)
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Распаковка с ограничениями
+                if unzip -o "$file" -d . 2>&1 | grep -v "inflating:" | grep -v "creating:"; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+              *.tar.gz|*.tgz)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                # Проверка целостности архива
+                if ! tar -tzf "$file" > /dev/null 2>&1; then
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                if tar -xzf "$file" -C .; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+              *.tar)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                # Проверка целостности архива
+                if ! tar -tf "$file" > /dev/null 2>&1; then
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                # Проверка размера
+                file_size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file" 2>/dev/null || echo "0")
+                max_size=$((500 * 1024 * 1024))
+                if [ "$file_size" -gt "$max_size" ]; then
+                  echo -e "${RED}✗ Архив слишком большой (>500MB) / Archive too large (>500MB): $file${NC}"
+                  failed=$((failed + 1))
+                  echo ""
+                  continue
+                fi
+                
+                if tar -xf "$file" -C .; then
+                  echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                  echo "- $file" >> "$extracted_list"
+                  success=$((success + 1))
+                else
+                  echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+            esac
+          done <<< "$changed_files"
+          
+          # Выводим итоговую статистику
+          echo "=================================================="
+          echo "Итоги / Summary:"
+          echo "=================================================="
+          echo "Всего архивов / Total archives: $total"
+          echo -e "${GREEN}Успешно распакано / Successfully extracted: $success${NC}"
+          if [ $failed -gt 0 ]; then
+            echo -e "${RED}Не удалось распаковать / Failed to extract: $failed${NC}"
+          fi
+          echo "=================================================="
+          
+          # Сохраняем информацию об извлеченных файлах
+          if [ -s "$extracted_list" ]; then
+            cp "$extracted_list" /tmp/extracted_archives.txt
+          else
+            echo "N/A" > /tmp/extracted_archives.txt
+          fi
+          
+          rm -f "$extracted_list"
+      
+      - name: Commit extracted files
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # Получаем список всех файлов, исключая архивы и системные файлы
+          # Add all files except git directory and temp files
+          git add -A
+          
+          # Исключаем временные и системные файлы из коммита
+          git reset -- .git* 2>/dev/null || true
+          git reset -- /tmp/* 2>/dev/null || true
+          
+          # Проверяем, есть ли что коммитить
+          if git diff --staged --quiet; then
+            echo "Нет новых извлеченных файлов для коммита"
+            echo "No new extracted files to commit"
+          else
+            # Создаем коммит с информацией об извлеченных архивах
+            extracted_info=$(cat /tmp/extracted_archives.txt 2>/dev/null || echo "N/A")
+            git commit -m "🤖 Автоматическая распаковка архивов / Auto-extracted archives" \
+                       -m "" \
+                       -m "Автоматически распакованы следующие архивы:" \
+                       -m "The following archives were automatically extracted:" \
+                       -m "$extracted_info"
+            
+            # Пушим изменения
+            git push
+          fi
