@@ -27,7 +27,6 @@ jobs:
       - name: Detect and extract new archives
         run: |
           #!/bin/bash
-          set -e
           
           # Цвета для вывода
           GREEN='\033[0;32m'
@@ -45,90 +44,89 @@ jobs:
           total=0
           success=0
           failed=0
-          extracted_files=""
-          
-          # Функция для извлечения архива
-          extract_archive() {
-            local archive="$1"
-            local archive_type="$2"
-            
-            total=$((total + 1))
-            echo -e "${YELLOW}Обработка / Processing: $archive${NC}"
-            
-            case "$archive_type" in
-              "zip")
-                # Проверяем содержимое архива
-                if unzip -t "$archive" > /dev/null 2>&1; then
-                  # Распаковываем архив
-                  if unzip -o "$archive"; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $archive${NC}"
-                    success=$((success + 1))
-                    extracted_files="${extracted_files}\n- $archive"
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $archive${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
-                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $archive${NC}"
-                  failed=$((failed + 1))
-                fi
-                ;;
-              "tar.gz"|"tgz")
-                if tar -tzf "$archive" > /dev/null 2>&1; then
-                  if tar -xzf "$archive"; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $archive${NC}"
-                    success=$((success + 1))
-                    extracted_files="${extracted_files}\n- $archive"
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $archive${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
-                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $archive${NC}"
-                  failed=$((failed + 1))
-                fi
-                ;;
-              "tar")
-                if tar -tf "$archive" > /dev/null 2>&1; then
-                  if tar -xf "$archive"; then
-                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $archive${NC}"
-                    success=$((success + 1))
-                    extracted_files="${extracted_files}\n- $archive"
-                  else
-                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $archive${NC}"
-                    failed=$((failed + 1))
-                  fi
-                else
-                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $archive${NC}"
-                  failed=$((failed + 1))
-                fi
-                ;;
-            esac
-            echo ""
-          }
           
           # Получаем список измененных файлов из последнего коммита
-          changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD)
+          changed_files=$(git diff-tree --no-commit-id --name-only -r HEAD || echo "")
+          
+          # Если нет измененных файлов, проверяем все архивы в репозитории
+          if [ -z "$changed_files" ]; then
+            echo "Не найдено измененных файлов в последнем коммите, поиск всех архивов..."
+            changed_files=$(find . -maxdepth 1 -type f \( -name "*.zip" -o -name "*.tar.gz" -o -name "*.tgz" -o -name "*.tar" \) -printf "%f\n")
+          fi
+          
+          # Создаем временный файл для списка извлеченных архивов
+          extracted_list=$(mktemp)
           
           # Обрабатываем только новые/измененные архивы
-          echo "$changed_files" | while read -r file; do
-            if [ -f "$file" ]; then
-              case "$file" in
-                *.zip)
-                  extract_archive "$file" "zip"
-                  ;;
-                *.tar.gz)
-                  extract_archive "$file" "tar.gz"
-                  ;;
-                *.tgz)
-                  extract_archive "$file" "tgz"
-                  ;;
-                *.tar)
-                  extract_archive "$file" "tar"
-                  ;;
-              esac
+          while IFS= read -r file; do
+            if [ -z "$file" ]; then
+              continue
             fi
-          done
+            
+            if [ ! -f "$file" ]; then
+              continue
+            fi
+            
+            case "$file" in
+              *.zip)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                if unzip -t "$file" > /dev/null 2>&1; then
+                  if unzip -o "$file" -d .; then
+                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                    echo "- $file" >> "$extracted_list"
+                    success=$((success + 1))
+                  else
+                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                    failed=$((failed + 1))
+                  fi
+                else
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+              *.tar.gz|*.tgz)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                if tar -tzf "$file" > /dev/null 2>&1; then
+                  if tar -xzf "$file" -C .; then
+                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                    echo "- $file" >> "$extracted_list"
+                    success=$((success + 1))
+                  else
+                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                    failed=$((failed + 1))
+                  fi
+                else
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+              *.tar)
+                total=$((total + 1))
+                echo -e "${YELLOW}Обработка / Processing: $file${NC}"
+                
+                if tar -tf "$file" > /dev/null 2>&1; then
+                  if tar -xf "$file" -C .; then
+                    echo -e "${GREEN}✓ Успешно распакован / Successfully extracted: $file${NC}"
+                    echo "- $file" >> "$extracted_list"
+                    success=$((success + 1))
+                  else
+                    echo -e "${RED}✗ Ошибка при распаковке / Error extracting: $file${NC}"
+                    failed=$((failed + 1))
+                  fi
+                else
+                  echo -e "${RED}✗ Поврежденный архив / Corrupted archive: $file${NC}"
+                  failed=$((failed + 1))
+                fi
+                echo ""
+                ;;
+            esac
+          done <<< "$changed_files"
           
           # Выводим итоговую статистику
           echo "=================================================="
@@ -142,7 +140,13 @@ jobs:
           echo "=================================================="
           
           # Сохраняем информацию об извлеченных файлах
-          echo "$extracted_files" > /tmp/extracted_archives.txt
+          if [ -s "$extracted_list" ]; then
+            cp "$extracted_list" /tmp/extracted_archives.txt
+          else
+            echo "N/A" > /tmp/extracted_archives.txt
+          fi
+          
+          rm -f "$extracted_list"
       
       - name: Commit extracted files
         run: |
@@ -158,13 +162,14 @@ jobs:
             echo "No new extracted files to commit"
           else
             # Создаем коммит с информацией об извлеченных архивах
-            git commit -m "🤖 Автоматическая распаковка архивов / Auto-extracted archives
-
-Автоматически распакованы следующие архивы:
-The following archives were automatically extracted:
-$(cat /tmp/extracted_archives.txt)
-
-Создано GitHub Actions workflow: auto-extract-archives"
+            extracted_info=$(cat /tmp/extracted_archives.txt 2>/dev/null || echo "N/A")
+            git commit -m "🤖 Автоматическая распаковка архивов / Auto-extracted archives" \
+                       -m "" \
+                       -m "Автоматически распакованы следующие архивы:" \
+                       -m "The following archives were automatically extracted:" \
+                       -m "$extracted_info" \
+                       -m "" \
+                       -m "Создано GitHub Actions workflow: auto-extract-archives"
             
             # Пушим изменения
             git push
